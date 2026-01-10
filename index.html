@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -8,489 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      color-scheme: light;
-      --bg: #f4efe6;
-      --ink: #181513;
-      --muted: #6b625b;
-      --panel: #ffffff;
-      --border: #e2d6c6;
-      --accent: #17645f;
-      --accent-soft: #d7efe8;
-      --sun: #cc8a2b;
-      --shadow: 0 24px 70px rgba(24, 21, 19, 0.16);
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      margin: 0;
-      font-family: "Space Grotesk", sans-serif;
-      color: var(--ink);
-      background: radial-gradient(circle at top, #fff8ec 0%, var(--bg) 45%, #eadfcd 100%);
-      height: 100vh;
-      overflow: hidden;
-    }
-
-    h1,
-    h2,
-    h3 {
-      font-family: "Fraunces", serif;
-    }
-
-    .app {
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-
-    .main {
-      flex: 1;
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 340px;
-      gap: 14px;
-      padding: 16px;
-      overflow: hidden;
-    }
-
-    .preview-panel {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      box-shadow: var(--shadow);
-      display: flex;
-      flex-direction: column;
-      min-width: 0;
-    }
-
-    .preview-header {
-      padding: 12px 16px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-    }
-
-    .preview-actions {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .preview-actions .btn {
-      padding: 6px 12px;
-      font-size: 0.8rem;
-      box-shadow: none;
-    }
-
-    .preview-header h2 {
-      margin: 0;
-      font-size: 1.2rem;
-    }
-
-    .preview-header p {
-      margin: 4px 0 0;
-      color: var(--muted);
-      font-size: 0.85rem;
-    }
-
-    .preview-header .hint-inline {
-      margin: 2px 0 0;
-      color: var(--muted);
-      font-size: 0.78rem;
-    }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: #f2ebe0;
-      color: var(--muted);
-      font-size: 0.75rem;
-      border-radius: 999px;
-      padding: 6px 12px;
-      white-space: nowrap;
-    }
-
-    .badge.is-live {
-      background: var(--accent-soft);
-      color: var(--accent);
-    }
-
-    .frame-wrap {
-      flex: 1;
-      min-height: 0;
-      overflow: hidden;
-    }
-
-    .frame-wrap iframe {
-      width: 100%;
-      height: 100%;
-      border: none;
-      display: block;
-    }
-
-    .sidebar {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      overflow: auto;
-      padding-right: 4px;
-      scrollbar-width: thin;
-      scrollbar-color: rgba(24, 21, 19, 0.35) transparent;
-    }
-
-    .panel {
-      background: var(--panel);
-      border-radius: 18px;
-      border: 1px solid var(--border);
-      padding: 14px;
-      box-shadow: var(--shadow);
-      overflow: visible;
-    }
-
-    .panel + .panel {
-      border-top: 1px solid rgba(226, 214, 198, 0.7);
-    }
-
-    .panel-body {
-      padding-right: 0;
-    }
-
-    .is-hidden {
-      display: none !important;
-    }
-
-    .admin-section {
-      margin-top: 12px;
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      background: #ffffff;
-      box-shadow: 0 10px 24px rgba(24, 21, 19, 0.08);
-      overflow: hidden;
-    }
-
-    .admin-section summary {
-      cursor: pointer;
-      font-weight: 600;
-      list-style: none;
-      display: flex;
-      align-items: center;
-      padding: 6px 0;
-      background: #fff6e8;
-      padding: 10px 14px;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .admin-section summary::-webkit-details-marker {
-      display: none;
-    }
-
-    .admin-section summary::before {
-      content: "+";
-      display: inline-block;
-      margin-right: 8px;
-      color: var(--accent);
-      font-weight: 700;
-    }
-
-    .admin-section[open] summary::before {
-      content: "-";
-    }
-
-    .admin-body {
-      margin-top: 0;
-      display: grid;
-      gap: 12px;
-      padding: 12px 14px 16px;
-    }
-
-    .admin-message {
-      font-size: 0.85rem;
-      color: var(--muted);
-    }
-
-    .admin-message.is-visible {
-      color: var(--accent);
-    }
-
-    .admin-message.is-error {
-      color: #b34120;
-    }
-
-    .admin-list {
-      display: grid;
-      gap: 8px;
-    }
-
-    .admin-list-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      padding: 10px 12px;
-      border-radius: 10px;
-      border: 1px solid var(--border);
-      background: #ffffff;
-      font-size: 0.85rem;
-    }
-
-    .admin-list-item strong {
-      display: block;
-    }
-
-    .news-admin-slot {
-      display: grid;
-      gap: 10px;
-      padding: 10px;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      background: #ffffff;
-    }
-
-    .news-admin-slot img {
-      width: 100%;
-      border-radius: 8px;
-      display: block;
-    }
-
-    .news-admin-placeholder {
-      padding: 18px;
-      border-radius: 8px;
-      background: #f1f3f5;
-      text-align: center;
-      color: var(--muted);
-      font-size: 0.85rem;
-    }
-
-    .panel h2 {
-      margin: 0 0 12px;
-      font-size: 1.1rem;
-    }
-
-    .stack {
-      display: grid;
-      gap: 12px;
-    }
-
-    .field {
-      display: grid;
-      gap: 6px;
-      font-size: 0.9rem;
-    }
-
-    .field input,
-    .field textarea,
-    .field select {
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 12px 14px;
-      font-size: 0.9rem;
-      font-family: "Space Grotesk", sans-serif;
-      background: #fffdf7;
-      width: 100%;
-      max-width: 100%;
-    }
-
-    .field textarea {
-      min-height: 140px;
-      resize: vertical;
-      line-height: 1.4;
-    }
-
-    .row {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 10px;
-    }
-
-    .actions {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      margin-top: 10px;
-    }
-
-    .actions .btn {
-      min-width: 140px;
-      justify-content: center;
-    }
-
-    .admin-list-item {
-      border-radius: 12px;
-      background: #fffdf7;
-    }
-
-    .panel-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      margin-bottom: 10px;
-    }
-
-    .panel-header h2 {
-      margin: 0;
-    }
-
-    .status-chip {
-      font-size: 0.75rem;
-      padding: 6px 10px;
-      border-radius: 999px;
-      background: #f2ebe0;
-      color: var(--muted);
-    }
-
-    .status-chip.is-live {
-      background: var(--accent-soft);
-      color: var(--accent);
-    }
-
-    .btn {
-      border: none;
-      border-radius: 999px;
-      padding: 10px 16px;
-      font-size: 0.9rem;
-      font-weight: 600;
-      background: var(--accent);
-      color: #ffffff;
-      cursor: pointer;
-      transition: transform 0.15s ease, box-shadow 0.15s ease;
-      box-shadow: 0 10px 25px rgba(23, 100, 95, 0.25);
-    }
-
-    .btn:hover {
-      transform: translateY(-1px);
-    }
-
-    .btn.ghost {
-      background: var(--accent-soft);
-      color: var(--accent);
-      box-shadow: none;
-    }
-
-    .hint {
-      margin: 10px 0 0;
-      font-size: 0.82rem;
-      color: var(--muted);
-      line-height: 1.4;
-    }
-
-    .status {
-      margin: 12px 0 0;
-      font-size: 0.85rem;
-      color: var(--muted);
-    }
-
-    .status.is-good {
-      color: var(--accent);
-    }
-
-    .status.is-bad {
-      color: #b34120;
-    }
-
-    .modal-backdrop {
-      position: fixed;
-      inset: 0;
-      background: rgba(24, 21, 19, 0.45);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.2s ease;
-      z-index: 30;
-      padding: 16px;
-    }
-
-    .modal-backdrop.is-visible {
-      opacity: 1;
-      pointer-events: auto;
-    }
-
-    .modal-card {
-      width: min(420px, 92vw);
-      background: #ffffff;
-      border-radius: 16px;
-      padding: 18px 18px 16px;
-      border: 1px solid var(--border);
-      box-shadow: 0 20px 60px rgba(24, 21, 19, 0.2);
-    }
-
-    .modal-card h3 {
-      margin: 0 0 6px;
-      font-size: 1.1rem;
-    }
-
-    .modal-card p {
-      margin: 0 0 14px;
-      color: var(--muted);
-      font-size: 0.92rem;
-      line-height: 1.4;
-    }
-
-    .modal-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 10px;
-    }
-
-    .tiny {
-      font-size: 0.8rem;
-      color: var(--muted);
-      margin: 6px 0 0;
-    }
-
-    .change-item {
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 10px;
-      background: #fffaf1;
-      margin-top: 8px;
-      font-size: 0.85rem;
-    }
-
-    .change-item strong {
-      display: block;
-      margin-bottom: 4px;
-      font-size: 0.75rem;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--muted);
-    }
-
-    @media (max-width: 980px) {
-      body {
-        overflow: auto;
-      }
-
-      .topbar {
-        grid-template-columns: 1fr;
-      }
-
-      .main {
-        grid-template-columns: 1fr;
-        padding-bottom: 24px;
-      }
-
-      .sidebar {
-        order: -1;
-      }
-
-      .preview-panel {
-        min-height: 520px;
-      }
-
-      .frame-wrap {
-        height: 520px;
-      }
-    }
-  </style>
+  <link rel="stylesheet" href="./editor.css">
 </head>
 <body>
   <div class="app">
@@ -513,7 +31,22 @@
         </div>
       </section>
 
-      <aside class="sidebar">
+      <section class="preview-panel consultations-panel" data-consultations-panel>
+        <div class="preview-header">
+          <div>
+            <h2>Consultation requests</h2>
+            <p>Review incoming consultation applications.</p>
+          </div>
+          <div class="preview-actions">
+            <button id="consultationsPageRefresh" class="btn ghost" type="button">Refresh</button>
+          </div>
+        </div>
+        <div class="consultations-body">
+          <div id="consultationsPageMessage" class="admin-message"></div>
+          <div id="consultationsPageList" class="consult-admin-list"></div>
+        </div>
+      </section>
+<aside class="sidebar">
         <section class="panel">
           <div class="panel-header">
             <h2>Connect</h2>
@@ -523,11 +56,11 @@
             <div class="stack">
             <label class="field">
               <span>Site URL</span>
-              <input id="siteInput" type="text" placeholder="https://shadowlka.github.io/Project/" value="https://shadowlka.github.io/Project/">
+              <input id="siteInput" type="text" placeholder="https://medbridgeglobal.net/" value="https://medbridgeglobal.net/">
             </label>
             <label class="field">
               <span>Repository URL</span>
-              <input id="repoInput" type="text" placeholder="https://github.com/owner/repo" value="https://github.com/ShadowLKA/Project">
+              <input id="repoInput" type="text" placeholder="https://github.com/owner/repo" value="https://github.com/ShadowLKA/MedBridge">
             </label>
             <div class="row">
               <label class="field">
@@ -551,7 +84,17 @@
           </div>
         </section>
 
-        <section class="panel is-hidden" data-admin-panel>
+        <section class="panel" data-view-panel>
+          <div class="panel-header">
+            <h2>Views</h2>
+          </div>
+          <div class="panel-body">
+            <div class="actions">
+              <button id="viewEditorBtn" class="btn ghost is-active" type="button">Editor</button>
+              <button id="viewConsultationsBtn" class="btn ghost" type="button">Consultations</button>
+            </div>
+          </div>
+        </section><section class="panel is-hidden" data-admin-panel>
           <div class="panel-header">
             <h2>Admin tools</h2>
             <span class="status-chip" id="supabaseChip">Offline</span>
@@ -690,6 +233,8 @@
             <div class="actions">
               <button id="pushChangesBtn" class="btn" type="button" disabled>Push text edits</button>
               <button id="clearChangesBtn" class="btn ghost" type="button" disabled>Clear edits</button>
+              <button id="saveDraftBtn" class="btn ghost" type="button" disabled>Save draft</button>
+              <button id="loadDraftBtn" class="btn ghost" type="button" disabled>Load draft</button>
             </div>
             <div id="changesList" class="tiny">No edits yet.</div>
             <p id="status" class="status">Status: waiting for connection.</p>
@@ -714,4 +259,7 @@
   <script type="module" src="editor-app.js"></script>
 </body>
 </html>
+
+
+
 
