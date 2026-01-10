@@ -61,7 +61,7 @@ export const initConsultationsPage = ({ state }) => {
         const status = row.status || "new";
         const source = row.source || "web";
         const id = row.id || "";
-        const isRejected = status === "rejected";
+        const isRejected = String(status).toLowerCase() === "rejected";
 
         return `
           <div class="consult-admin-item${isRejected ? " is-rejected" : ""}" data-consult-id="${id}">
