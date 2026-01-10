@@ -82,7 +82,9 @@ export const initAdminTools = ({ state, refreshPreview }) => {
   const supabaseStatus = document.getElementById("supabaseStatus");
   const supabaseChip = document.getElementById("supabaseChip");
   const adminSections = Array.from(
-    document.querySelectorAll("[data-team-admin-section], [data-news-admin-section]")
+    document.querySelectorAll(
+      "[data-team-admin-section], [data-news-admin-section]"
+    )
   );
 
   const teamForm = document.getElementById("teamAdminForm");
@@ -511,6 +513,8 @@ export const initAdminTools = ({ state, refreshPreview }) => {
     });
   }
 
+  
   connectSupabaseFn = connectSupabase;
   loadConfigFn = loadSupabaseConfig;
 };
+
