@@ -1,4 +1,4 @@
-﻿export const DEFAULT_COPY_FILES = [
+export const DEFAULT_COPY_FILES = [
   "siteData.js",
   "home.js",
   "consultForm.js",
