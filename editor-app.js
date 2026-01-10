@@ -1,4 +1,4 @@
-﻿import {
+import {
   DEFAULT_COPY_FILES,
   parseRepoUrl,
   apiFetch,
@@ -14,6 +14,7 @@ import {
   setEditingEnabled
 } from "./editor-preview.js";
 import { applySupabaseDefaults, autoConnectSupabase, initAdminTools } from "./editor-admin.js";
+import { initConsultationsPage } from "./editor-consultations.js";
 
 const siteInput = document.getElementById("siteInput");
 const repoInput = document.getElementById("repoInput");
@@ -27,6 +28,8 @@ const editorBadge = document.getElementById("editorBadge");
 const replaceMode = document.getElementById("replaceMode");
 const pushChangesBtn = document.getElementById("pushChangesBtn");
 const clearChangesBtn = document.getElementById("clearChangesBtn");
+const saveDraftBtn = document.getElementById("saveDraftBtn");
+const loadDraftBtn = document.getElementById("loadDraftBtn");
 const toggleEditBtn = document.getElementById("toggleEditBtn");
 const deselectBtn = document.getElementById("deselectBtn");
 const changesList = document.getElementById("changesList");
@@ -34,6 +37,13 @@ const status = document.getElementById("status");
 const adminPanel = document.querySelector("[data-admin-panel]");
 const connectChip = document.getElementById("connectChip");
 const changesChip = document.getElementById("changesChip");
+const main = document.querySelector(".main");
+const viewEditorBtn = document.getElementById("viewEditorBtn");
+const viewConsultationsBtn = document.getElementById("viewConsultationsBtn");
+
+const DRAFT_STORAGE_KEY = "editorChangeDraft";
+
+let consultationsPage = null;
 
 const state = {
   owner: "",
@@ -69,10 +79,26 @@ const setStatus = (message, tone = "") => {
   }
 };
 
+const setView = (view) => {
+  if (!main) {
+    return;
+  }
+  const isConsultations = view === "consultations";
+  main.classList.toggle("is-consultations", isConsultations);
+  if (viewEditorBtn) {
+    viewEditorBtn.classList.toggle("is-active", !isConsultations);
+  }
+  if (viewConsultationsBtn) {
+    viewConsultationsBtn.classList.toggle("is-active", isConsultations);
+  }
+  if (isConsultations && consultationsPage) {
+    consultationsPage.load();
+  }
+};
 const setConnected = (connected) => {
   connectBadge.textContent = connected ? "Connected" : "Not connected";
   connectBadge.classList.toggle("is-live", connected);
-  [replaceMode, pushChangesBtn, clearChangesBtn].forEach((el) => {
+  [replaceMode, pushChangesBtn, clearChangesBtn, saveDraftBtn, loadDraftBtn].forEach((el) => {
     el.disabled = !connected;
   });
   if (connectChip) {
@@ -104,6 +130,49 @@ const renderChanges = () => {
     item.appendChild(next);
     changesList.appendChild(item);
   });
+};
+
+const applyDraftToPreview = (doc) => {
+  if (!doc) {
+    return;
+  }
+  const targets = Array.from(doc.querySelectorAll("[data-editor-text]"));
+  targets.forEach((node) => {
+    const original = node.dataset.originalText || node.textContent || "";
+    if (!original) {
+      return;
+    }
+    const replacement = state.changes.get(original);
+    if (replacement === undefined) {
+      return;
+    }
+    node.dataset.originalText = original;
+    node.textContent = replacement;
+  });
+};
+
+const saveDraft = () => {
+  const entries = Array.from(state.changes.entries());
+  localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ entries, savedAt: new Date().toISOString() }));
+  setStatus("Draft saved locally.", "is-good");
+};
+
+const loadDraft = () => {
+  const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+  if (!raw) {
+    setStatus("No saved draft found.", "is-bad");
+    return;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    const entries = Array.isArray(parsed.entries) ? parsed.entries : [];
+    state.changes = new Map(entries);
+    renderChanges();
+    applyDraftToPreview(state.previewDoc);
+    setStatus("Draft loaded.", "is-good");
+  } catch (_error) {
+    setStatus("Saved draft is corrupted.", "is-bad");
+  }
 };
 
 const registerChange = (original, updated) => {
@@ -227,6 +296,7 @@ connectBtn.addEventListener("click", async () => {
     applySupabaseDefaults();
     autoConnectSupabase();
   } catch (error) {
+
     setConnected(false);
     setStatus(error.message || "Failed to connect.", "is-bad");
   }
@@ -242,6 +312,8 @@ pushChangesBtn.addEventListener("click", async () => {
 });
 
 clearChangesBtn.addEventListener("click", clearEdits);
+saveDraftBtn.addEventListener("click", saveDraft);
+loadDraftBtn.addEventListener("click", loadDraft);
 
 toggleEditBtn.addEventListener("click", () => {
   setEditingEnabled(state, toggleEditBtn, previewFrame, !state.editingEnabled);
@@ -254,7 +326,28 @@ deselectBtn.addEventListener("click", () => {
   }
 });
 
+if (viewEditorBtn) {
+  viewEditorBtn.addEventListener("click", () => {
+    setView("editor");
+  });
+}
+
+if (viewConsultationsBtn) {
+  viewConsultationsBtn.addEventListener("click", () => {
+    setView("consultations");
+  });
+}
+
+setView("editor");
 setConnected(false);
 renderChanges();
 setEditingEnabled(state, toggleEditBtn, previewFrame, true);
 initAdminTools({ state, refreshPreview });
+consultationsPage = initConsultationsPage({ state });
+
+if (localStorage.getItem(DRAFT_STORAGE_KEY)) {
+  loadDraft();
+}
+
+
+
