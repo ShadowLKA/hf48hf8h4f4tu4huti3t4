@@ -320,6 +320,36 @@ h3 {
   font-size: 0.9rem;
 }
 
+.field.is-token {
+  padding: 10px 12px 14px;
+  border: 1px dashed rgba(204, 138, 43, 0.6);
+  border-radius: 14px;
+  background: #fff8ee;
+}
+
+.field.is-token span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.field.is-token span::after {
+  content: "Paste key here";
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8a5a12;
+  background: #ffe6c2;
+  padding: 4px 8px;
+  border-radius: 999px;
+}
+
+.field.is-token input {
+  border-color: #cc8a2b;
+  background: #fff9f0;
+  box-shadow: 0 0 0 2px rgba(204, 138, 43, 0.15);
+}
+
 .field input,
 .field textarea,
 .field select {
