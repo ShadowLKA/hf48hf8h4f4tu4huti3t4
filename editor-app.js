@@ -232,7 +232,10 @@ const pushTextEdits = async () => {
       }
       updates.push({ path, content: result.updated });
     } catch (error) {
-      setStatus(`Failed updating ${path}.`, "is-bad");
+      if (error && error.status === 404) {
+        continue;
+      }
+      setStatus(`Failed updating ${path}: ${error.message || "Unknown error"}`, "is-bad");
       return;
     }
   }
@@ -408,4 +411,3 @@ consultationsPage = initConsultationsPage({ state });
 if (localStorage.getItem(DRAFT_STORAGE_KEY)) {
   loadDraft();
 }
-
