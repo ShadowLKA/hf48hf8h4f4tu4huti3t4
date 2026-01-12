@@ -16,7 +16,7 @@ export const DEFAULT_COPY_FILES = [
 ];
 
 export const parseRepoUrl = (url) => {
-  const match = url.trim().match(/github\.com\/(.+?)\/(.+?)(\.git)?$/i);
+  const match = url.trim().match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/i);
   if (!match) {
     return null;
   }
@@ -55,6 +55,9 @@ export const encodeBase64 = (text) => {
 };
 
 export const normalizeSiteUrl = (url) => {
+  if (!url) {
+    return "";
+  }
   if (!url.endsWith("/")) {
     return `${url}/`;
   }
