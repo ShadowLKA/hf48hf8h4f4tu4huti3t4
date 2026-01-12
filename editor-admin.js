@@ -2,6 +2,8 @@ const TEAM_TABLE = "team_members";
 const TEAM_BUCKET = "team-images";
 const NEWS_TABLE = "news_slots";
 const NEWS_BUCKET = "news-images";
+const SERVICE_TABLE = "service_slots";
+const SERVICE_BUCKET = "service-images";
 const SUPABASE_STORAGE_KEY = "editorSupabaseConfig";
 const DEFAULT_SUPABASE_URL = "https://heihssimnnilkowuxvfa.supabase.co";
 const DEFAULT_SUPABASE_KEY =
@@ -54,6 +56,13 @@ const setAdminEnabled = (sections, enabled) => {
 };
 
 const safeFileName = (name) => name.replace(/[^a-zA-Z0-9._-]/g, "-");
+const escapeHtml = (value) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 
 export const applySupabaseDefaults = () => {
   const supabaseUrlInput = document.getElementById("supabaseUrlInput");
@@ -83,7 +92,7 @@ export const initAdminTools = ({ state, refreshPreview }) => {
   const supabaseChip = document.getElementById("supabaseChip");
   const adminSections = Array.from(
     document.querySelectorAll(
-      "[data-team-admin-section], [data-news-admin-section]"
+      "[data-team-admin-section], [data-news-admin-section], [data-service-admin-section]"
     )
   );
 
@@ -99,6 +108,11 @@ export const initAdminTools = ({ state, refreshPreview }) => {
   const newsBody = document.getElementById("newsAdminBody");
   const newsMessage = document.getElementById("newsAdminMessage");
   const slotEls = Array.from(document.querySelectorAll("[data-news-admin-slot]"));
+  const serviceBody = document.getElementById("serviceAdminBody");
+  const serviceMessage = document.getElementById("serviceAdminMessage");
+  const serviceSlotEls = Array.from(
+    document.querySelectorAll("[data-service-admin-slot]")
+  );
 
   setAdminEnabled(adminSections, false);
 
@@ -147,6 +161,7 @@ export const initAdminTools = ({ state, refreshPreview }) => {
     setAdminEnabled(adminSections, true);
     loadTeamMembers();
     loadNewsSlots();
+    loadServiceSlots();
   };
 
   const resetTeamForm = () => {
@@ -172,10 +187,10 @@ export const initAdminTools = ({ state, refreshPreview }) => {
     teamList.innerHTML = members
       .map(
         (member) => `
-          <div class="admin-list-item" data-id="${member.id}">
+          <div class="admin-list-item" data-id="${escapeHtml(member.id)}">
             <div>
-              <strong>${member.name || ""}</strong>
-              <div>${member.title || ""} · ${member.role || ""}</div>
+              <strong>${escapeHtml(member.name || "")}</strong>
+              <div>${escapeHtml(member.title || "")} - ${escapeHtml(member.role || "")}</div>
             </div>
             <div class="actions">
               <button class="btn ghost" type="button" data-team-edit>Edit</button>
@@ -196,6 +211,9 @@ export const initAdminTools = ({ state, refreshPreview }) => {
     pendingDeleteId = member?.id || "";
     if (confirmMessage) {
       confirmMessage.textContent = `Delete ${member?.name || "this member"}? This action cannot be undone.`;
+    }
+    if (confirmConfirm) {
+      confirmConfirm.textContent = "Delete";
     }
     confirmModal.classList.add("is-visible");
     confirmModal.setAttribute("aria-hidden", "false");
@@ -307,7 +325,7 @@ export const initAdminTools = ({ state, refreshPreview }) => {
         return;
       }
       const id = item.getAttribute("data-id");
-      const member = teamMembers.find((entry) => entry.id === id);
+      const member = teamMembers.find((entry) => String(entry.id) === id);
       if (!member) {
         return;
       }
@@ -372,6 +390,7 @@ export const initAdminTools = ({ state, refreshPreview }) => {
   }
 
   let slotData = {};
+  let serviceSlotData = {};
 
   const updateSlotUi = (slotEl, data) => {
     const imageEl = slotEl.querySelector("[data-slot-image]");
@@ -434,6 +453,74 @@ export const initAdminTools = ({ state, refreshPreview }) => {
       throw error;
     }
     const { data } = state.supabaseClient.storage.from(NEWS_BUCKET).getPublicUrl(filePath);
+    return data?.publicUrl || "";
+  };
+
+  const updateServiceSlotUi = (slotEl, data) => {
+    const imageEl = slotEl.querySelector("[data-slot-image]");
+    const placeholder = slotEl.querySelector("[data-slot-placeholder]");
+    const captionInput = slotEl.querySelector("[data-slot-caption-input]");
+
+    if (data?.image_url) {
+      if (imageEl) {
+        imageEl.src = data.image_url;
+        imageEl.classList.remove("is-hidden");
+      }
+      if (placeholder) {
+        placeholder.classList.add("is-hidden");
+      }
+    } else {
+      if (imageEl) {
+        imageEl.removeAttribute("src");
+        imageEl.classList.add("is-hidden");
+      }
+      if (placeholder) {
+        placeholder.classList.remove("is-hidden");
+      }
+    }
+
+    if (captionInput) {
+      captionInput.value = data?.caption || "";
+    }
+  };
+
+  const loadServiceSlots = async () => {
+    if (!state.supabaseClient) {
+      return;
+    }
+    const { data, error } = await state.supabaseClient
+      .from(SERVICE_TABLE)
+      .select("service_key,slot_number,caption,image_url,updated_at")
+      .order("service_key", { ascending: true })
+      .order("slot_number", { ascending: true });
+    if (error) {
+      setMessage(serviceMessage, "Unable to load service slots.", "error");
+      return;
+    }
+    serviceSlotData = (data || []).reduce((acc, item) => {
+      const key = `${item.service_key}:${item.slot_number}`;
+      acc[key] = item;
+      return acc;
+    }, {});
+    serviceSlotEls.forEach((slotEl) => {
+      const serviceKey = slotEl.dataset.serviceKey || "";
+      const slotNumber = Number(slotEl.dataset.slot);
+      const key = `${serviceKey}:${slotNumber}`;
+      updateServiceSlotUi(slotEl, serviceSlotData[key]);
+    });
+  };
+
+  const uploadServiceImage = async (file, serviceKey, slotNumber) => {
+    const safeName = safeFileName(file.name);
+    const ext = safeName.includes(".") ? safeName.split(".").pop() : "jpg";
+    const filePath = `services/${serviceKey}-slot-${slotNumber}.${ext}`;
+    const { error } = await state.supabaseClient.storage
+      .from(SERVICE_BUCKET)
+      .upload(filePath, file, { upsert: true });
+    if (error) {
+      throw error;
+    }
+    const { data } = state.supabaseClient.storage.from(SERVICE_BUCKET).getPublicUrl(filePath);
     return data?.publicUrl || "";
   };
 
@@ -513,8 +600,89 @@ export const initAdminTools = ({ state, refreshPreview }) => {
     });
   }
 
+  if (serviceBody) {
+    serviceBody.addEventListener("click", async (event) => {
+      const saveButton = event.target.closest("[data-slot-save]");
+      const clearButton = event.target.closest("[data-slot-clear]");
+      if (!saveButton && !clearButton) {
+        return;
+      }
+      if (!state.supabaseClient) {
+        setMessage(serviceMessage, "Connect Supabase first.", "error");
+        return;
+      }
+      const slotEl = event.target.closest("[data-slot]");
+      if (!slotEl) {
+        return;
+      }
+      const serviceKey = slotEl.dataset.serviceKey || "";
+      const slotNumber = Number(slotEl.dataset.slot);
+      const captionInput = slotEl.querySelector("[data-slot-caption-input]");
+      const fileInput = slotEl.querySelector("[data-slot-file]");
+      const caption = String(captionInput?.value || "").trim();
+      const file = fileInput?.files?.[0] || null;
+      const key = `${serviceKey}:${slotNumber}`;
+
+      try {
+        if (clearButton) {
+          const imageUrl = serviceSlotData[key]?.image_url || null;
+          const imagePath = getStoragePath(imageUrl, SERVICE_BUCKET);
+          if (imagePath) {
+            await state.supabaseClient.storage.from(SERVICE_BUCKET).remove([imagePath]);
+          }
+          const { error } = await state.supabaseClient.from(SERVICE_TABLE).upsert({
+            service_key: serviceKey,
+            slot_number: slotNumber,
+            caption: null,
+            image_url: null
+          });
+          if (error) {
+            setMessage(serviceMessage, "Unable to clear slot.", "error");
+            return;
+          }
+          if (captionInput) {
+            captionInput.value = "";
+          }
+          if (fileInput) {
+            fileInput.value = "";
+          }
+          setMessage(serviceMessage, "Cleared.", "");
+          loadServiceSlots();
+          if (refreshPreview) {
+            refreshPreview();
+          }
+          return;
+        }
+
+        let imageUrl = serviceSlotData[key]?.image_url || null;
+        if (file) {
+          imageUrl = await uploadServiceImage(file, serviceKey, slotNumber);
+        }
+        const { error } = await state.supabaseClient.from(SERVICE_TABLE).upsert({
+          service_key: serviceKey,
+          slot_number: slotNumber,
+          caption: caption || null,
+          image_url: imageUrl
+        });
+        if (error) {
+          setMessage(serviceMessage, "Unable to save slot.", "error");
+          return;
+        }
+        setMessage(serviceMessage, "Saved.", "");
+        loadServiceSlots();
+        if (refreshPreview) {
+          refreshPreview();
+        }
+      } catch (error) {
+        const detail = error?.message || error?.error_description || error?.name || "";
+        setMessage(serviceMessage, `Upload failed${detail ? `: ${detail}` : "."}`, "error");
+      }
+    });
+  }
+
   
   connectSupabaseFn = connectSupabase;
   loadConfigFn = loadSupabaseConfig;
 };
+
 
