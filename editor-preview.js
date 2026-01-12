@@ -193,6 +193,30 @@ export const enableEditing = (state, previewFrame, registerChange) => {
     }
     state.currentEditable = candidate;
     candidate.focus();
+    const selection = doc.getSelection?.();
+    if (selection) {
+      let range = null;
+      if (typeof doc.caretRangeFromPoint === "function") {
+        range = doc.caretRangeFromPoint(event.clientX, event.clientY);
+      } else if (typeof doc.caretPositionFromPoint === "function") {
+        const position = doc.caretPositionFromPoint(event.clientX, event.clientY);
+        if (position) {
+          range = doc.createRange();
+          range.setStart(position.offsetNode, position.offset);
+          range.collapse(true);
+        }
+      }
+      const isValidRange = range && candidate.contains(range.startContainer);
+      selection.removeAllRanges();
+      if (isValidRange) {
+        selection.addRange(range);
+      } else {
+        const fallback = doc.createRange();
+        fallback.selectNodeContents(candidate);
+        fallback.collapse(false);
+        selection.addRange(fallback);
+      }
+    }
   });
 
   doc.addEventListener("input", (event) => {
