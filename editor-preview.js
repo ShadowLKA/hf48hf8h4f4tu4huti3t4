@@ -1,4 +1,4 @@
-import { normalizeSiteUrl } from "./editor-helpers.js";
+﻿import { normalizeSiteUrl } from "./editor-helpers.js";
 
 export const injectEditorStyles = (doc) => {
   const style = doc.createElement("style");

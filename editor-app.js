@@ -1,12 +1,12 @@
 import {
   DEFAULT_COPY_FILES,
   parseRepoUrl,
-  apiFetch,
   decodeBase64,
   encodeBase64,
   replaceAll,
   replaceFirst
 } from "./editor-helpers.js";
+import { apiFetch } from "./github-api.js";
 import {
   clearActiveSelection,
   getPreviewDoc,
@@ -22,6 +22,7 @@ const branchInput = document.getElementById("branchInput");
 const tokenInput = document.getElementById("tokenInput");
 const messageInput = document.getElementById("messageInput");
 const connectBtn = document.getElementById("connectBtn");
+const testTokenBtn = document.getElementById("testTokenBtn");
 const connectBadge = document.getElementById("connectBadge");
 const previewFrame = document.getElementById("previewFrame");
 const editorBadge = document.getElementById("editorBadge");
@@ -41,8 +42,8 @@ const main = document.querySelector(".main");
 const viewEditorBtn = document.getElementById("viewEditorBtn");
 const viewConsultationsBtn = document.getElementById("viewConsultationsBtn");
 
-// Leave empty to allow any valid PAT.
-const REQUIRED_API_KEY = "";
+const SUPABASE_TOKEN_BUCKET = "Key";
+const SUPABASE_TOKEN_FOLDER = "key";
 
 const DRAFT_STORAGE_KEY = "editorChangeDraft";
 
@@ -58,7 +59,50 @@ const state = {
   currentEditable: null,
   editingEnabled: true,
   previewDoc: null,
-  supabaseClient: null
+  supabaseClient: null,
+  previewObserver: null,
+  previewListenersBound: false,
+  currentPreviewUrl: ""
+};
+
+const ensureSupabaseClient = () => {
+  if (state.supabaseClient) {
+    return true;
+  }
+  applySupabaseDefaults();
+  autoConnectSupabase();
+  return Boolean(state.supabaseClient);
+};
+
+const loadTokenFromSupabase = async () => {
+  if (!ensureSupabaseClient()) {
+    throw new Error("Supabase is not connected.");
+  }
+  const { data, error } = await state.supabaseClient.storage
+    .from(SUPABASE_TOKEN_BUCKET)
+    .list(SUPABASE_TOKEN_FOLDER, { limit: 10 });
+  if (error) {
+    throw new Error("Unable to list token bucket.");
+  }
+  const file = (data || []).find((item) => item?.name);
+  if (!file) {
+    throw new Error("No token file found.");
+  }
+  const filePath = SUPABASE_TOKEN_FOLDER ? `${SUPABASE_TOKEN_FOLDER}/${file.name}` : file.name;
+  const { data: blob, error: downloadError } = await state.supabaseClient.storage
+    .from(SUPABASE_TOKEN_BUCKET)
+    .download(filePath);
+  let token = "";
+  if (!downloadError && blob) {
+    token = (await blob.text()).trim();
+  }
+  if (!token) {
+    token = String(file.name || "").trim();
+  }
+  if (!token) {
+    throw new Error("Token file is empty.");
+  }
+  return token.replace(/\s+/g, "");
 };
 
 const refreshPreview = async () => {
@@ -207,16 +251,37 @@ const applyChangesToFile = (content) => {
   return { updated, usage };
 };
 
-const pushTextEdits = async () => {
-  if (!state.changes.size) {
-    setStatus("No edits to push.", "is-bad");
-    return;
-  }
-  setStatus("Preparing edits...");
+const isTextFilePath = (path) => {
+  const lower = path.toLowerCase();
+  return [
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".html",
+    ".htm",
+    ".css",
+    ".md",
+    ".txt",
+    ".json",
+    ".svg"
+  ].some((ext) => lower.endsWith(ext));
+};
+
+const listRepoFiles = async () => {
+  const tree = await apiFetch(
+    state,
+    `/repos/${state.owner}/${state.repo}/git/trees/${state.branch}?recursive=1`
+  );
+  return (tree.tree || [])
+    .filter((item) => item.type === "blob" && item.path && isTextFilePath(item.path))
+    .map((item) => item.path);
+};
+
+const collectUpdatesForPaths = async (paths) => {
   const usageTotals = new Map();
   const updates = [];
-
-  for (const path of DEFAULT_COPY_FILES) {
+  for (const path of paths) {
     try {
       const data = await apiFetch(state, `/repos/${state.owner}/${state.repo}/contents/${path}?ref=${state.branch}`);
       if (!data.content) {
@@ -236,16 +301,39 @@ const pushTextEdits = async () => {
         continue;
       }
       setStatus(`Failed updating ${path}: ${error.message || "Unknown error"}`, "is-bad");
-      return;
+      throw error;
     }
   }
+  return { updates, usageTotals };
+};
 
+const getUnusedChanges = (usageTotals) => {
   const unused = [];
   state.changes.forEach((_value, key) => {
     if (!usageTotals.get(key)) {
       unused.push(key);
     }
   });
+  return unused;
+};
+
+const pushTextEdits = async () => {
+  if (!state.changes.size) {
+    setStatus("No edits to push.", "is-bad");
+    return;
+  }
+  setStatus("Preparing edits...");
+  let { updates, usageTotals } = await collectUpdatesForPaths(DEFAULT_COPY_FILES);
+  let unused = getUnusedChanges(usageTotals);
+  if (!updates.length || unused.length) {
+    try {
+      const allPaths = await listRepoFiles();
+      ({ updates, usageTotals } = await collectUpdatesForPaths(allPaths));
+      unused = getUnusedChanges(usageTotals);
+    } catch (error) {
+      return;
+    }
+  }
 
   if (!updates.length) {
     setStatus("No files changed. Edits might not match source text.", "is-bad");
@@ -321,24 +409,51 @@ const clearEdits = () => {
   setStatus("Cleared edits.", "is-good");
 };
 
+const testToken = async () => {
+  let rawToken = tokenInput.value.trim();
+  if (!rawToken) {
+    setStatus("Loading token from Supabase...");
+    try {
+      rawToken = await loadTokenFromSupabase();
+      tokenInput.value = rawToken;
+    } catch (error) {
+      setStatus("Paste a GitHub token.", "is-bad");
+      return;
+    }
+  }
+  const sanitizedToken = rawToken.replace(/\s+/g, "");
+  state.token = sanitizedToken;
+  setStatus("Testing token...");
+  try {
+    const user = await apiFetch(state, "/user");
+    setStatus(`Token OK for ${user.login}.`, "is-good");
+  } catch (error) {
+    setStatus(`Token test failed: ${error.message || "Unknown error"}`, "is-bad");
+  }
+};
+
 connectBtn.addEventListener("click", async () => {
   const repoInfo = parseRepoUrl(repoInput.value);
   if (!repoInfo) {
     setStatus("Enter a valid GitHub repo URL.", "is-bad");
     return;
   }
-  if (!tokenInput.value.trim()) {
-    setStatus("Paste a GitHub token.", "is-bad");
-    return;
+  let rawToken = tokenInput.value.trim();
+  if (!rawToken) {
+    setStatus("Loading token from Supabase...");
+    try {
+      rawToken = await loadTokenFromSupabase();
+      tokenInput.value = rawToken;
+    } catch (error) {
+      setStatus("Paste a GitHub token.", "is-bad");
+      return;
+    }
   }
-  if (REQUIRED_API_KEY && tokenInput.value.trim() !== REQUIRED_API_KEY) {
-    setStatus("Invalid access key.", "is-bad");
-    return;
-  }
+  const sanitizedToken = rawToken.replace(/\s+/g, "");
   state.owner = repoInfo.owner;
   state.repo = repoInfo.repo;
   state.branch = branchInput.value.trim() || "master";
-  state.token = tokenInput.value.trim();
+  state.token = sanitizedToken;
   applySupabaseDefaults();
   autoConnectSupabase();
 
@@ -365,6 +480,12 @@ connectBtn.addEventListener("click", async () => {
     setStatus(`Token validation failed: ${error.message || "Failed to connect."}`, "is-bad");
   }
 });
+
+if (testTokenBtn) {
+  testTokenBtn.addEventListener("click", () => {
+    testToken();
+  });
+}
 
 pushChangesBtn.addEventListener("click", async () => {
   setStatus("Pushing edits...");
