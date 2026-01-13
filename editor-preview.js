@@ -18,6 +18,33 @@ export const preparePreviewHtml = (html, baseHref) => {
     doc.head.prepend(base);
   }
   base.setAttribute("href", baseHref);
+  try {
+    const url = new URL(baseHref);
+    const query = `${url.search || ""}${url.hash || ""}`;
+    if (query) {
+      const navScript = doc.createElement("script");
+      navScript.textContent =
+        `(function(){` +
+        `try{` +
+        `var q=${JSON.stringify(query)};` +
+        `window.__editorQuery=q;` +
+        `if(!window.location.search){` +
+        `var O=window.URLSearchParams;` +
+        `window.URLSearchParams=function(i){` +
+        `if((i===undefined||i==="") && window.__editorQuery){return new O(window.__editorQuery);}` +
+        `return new O(i);` +
+        `};` +
+        `window.URLSearchParams.prototype=O.prototype;` +
+        `}` +
+        `history.replaceState(null,'',q);` +
+        `window.dispatchEvent(new PopStateEvent('popstate'));` +
+        `window.dispatchEvent(new Event('editor:route'));` +
+        `}catch(e){}})();`;
+      doc.head.insertBefore(navScript, doc.head.firstChild);
+    }
+  } catch (_error) {
+    // Ignore invalid base URLs.
+  }
   injectEditorStyles(doc);
   return `<!DOCTYPE html>${doc.documentElement.outerHTML}`;
 };
@@ -98,6 +125,57 @@ const wrapEditableTextNodes = (doc) => {
   });
 };
 
+const observePreviewChanges = (state, doc) => {
+  if (!doc?.body) {
+    return;
+  }
+  if (state.previewObserver) {
+    state.previewObserver.disconnect();
+  }
+  const observer = new MutationObserver(() => {
+    if (state.previewDoc !== doc) {
+      return;
+    }
+    wrapEditableTextNodes(doc);
+  });
+  observer.observe(doc.body, { childList: true, subtree: true });
+  state.previewObserver = observer;
+};
+
+const getPageParam = (rawUrl) => {
+  if (!rawUrl) {
+    return "";
+  }
+  try {
+    const url = new URL(rawUrl, window.location.href);
+    return url.searchParams.get("page") || "";
+  } catch (_error) {
+    return "";
+  }
+};
+
+const scrollToPageTarget = (doc, pageKey) => {
+  if (!doc || !pageKey) {
+    return false;
+  }
+  const selectors = [
+    `#${CSS.escape(pageKey)}`,
+    `[data-page="${CSS.escape(pageKey)}"]`,
+    `[data-section="${CSS.escape(pageKey)}"]`,
+    `[data-page-key="${CSS.escape(pageKey)}"]`,
+    `[data-route="${CSS.escape(pageKey)}"]`
+  ];
+  const target =
+    doc.querySelector(selectors.join(",")) ||
+    doc.querySelector(`#${CSS.escape(pageKey.replace(/-/g, ""))}`) ||
+    doc.querySelector(`[id^="${CSS.escape(pageKey)}"]`);
+  if (!target) {
+    return false;
+  }
+  target.scrollIntoView({ behavior: "smooth", block: "start" });
+  return true;
+};
+
 export const isEditableElement = (element) => {
   if (!element || element.nodeType !== 1) {
     return false;
@@ -158,13 +236,48 @@ export const setEditingEnabled = (state, toggleEditBtn, previewFrame, enabled) =
   }
 };
 
-export const enableEditing = (state, previewFrame, registerChange) => {
+export const enableEditing = (state, previewFrame, registerChange, onNavigate) => {
   const doc = previewFrame.contentDocument;
-  if (!doc || state.previewDoc === doc) {
+  if (!doc) {
     return;
   }
-  state.previewDoc = doc;
-  wrapEditableTextNodes(doc);
+  if (state.previewDoc !== doc) {
+    state.previewDoc = doc;
+    wrapEditableTextNodes(doc);
+    observePreviewChanges(state, doc);
+  } else {
+    wrapEditableTextNodes(doc);
+  }
+  if (!state.previewListenersBound) {
+    const frameWindow = doc.defaultView;
+    if (frameWindow) {
+      const refreshEditableNodes = () => {
+        if (state.previewDoc !== doc) {
+          return;
+        }
+        wrapEditableTextNodes(doc);
+      };
+      const scheduleRefresh = () => {
+        requestAnimationFrame(() => requestAnimationFrame(refreshEditableNodes));
+      };
+      frameWindow.addEventListener("popstate", scheduleRefresh);
+      frameWindow.addEventListener("hashchange", scheduleRefresh);
+      frameWindow.addEventListener("editor:route", scheduleRefresh);
+      doc.addEventListener(
+        "click",
+        (event) => {
+          const target = event.target;
+          const routeTarget = target.closest?.("[data-route]");
+          if (!routeTarget) {
+            return;
+          }
+          scheduleRefresh();
+        },
+        true
+      );
+    }
+    state.previewListenersBound = true;
+  }
   doc.addEventListener("click", (event) => {
     const target = event.target;
     if (target.closest("a")) {
@@ -219,6 +332,109 @@ export const enableEditing = (state, previewFrame, registerChange) => {
     }
   });
 
+  doc.addEventListener(
+    "click",
+    (event) => {
+      if (!onNavigate) {
+        return;
+      }
+      const target = event.target;
+      const link = target.closest?.("a");
+      if (!link) {
+        return;
+      }
+      const dataRoute = link.getAttribute("data-route") || link.closest?.("[data-route]")?.getAttribute?.("data-route");
+      if (event.defaultPrevented && !dataRoute) {
+        return;
+      }
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        return;
+      }
+      if (link.getAttribute("target") === "_blank") {
+        return;
+      }
+      const href = dataRoute || link.getAttribute("href") || "";
+      if (!href || href.startsWith("mailto:") || href.startsWith("tel:")) {
+        return;
+      }
+
+      let handled = false;
+
+      if (href.startsWith("#")) {
+        if (previewFrame.contentWindow) {
+          previewFrame.contentWindow.location.hash = href;
+        }
+        if (state.currentPreviewUrl) {
+          try {
+            const url = new URL(state.currentPreviewUrl);
+            url.hash = href;
+            state.currentPreviewUrl = url.toString();
+          } catch (_error) {
+            state.currentPreviewUrl = `${state.currentPreviewUrl.split("#")[0]}${href}`;
+          }
+        }
+        handled = true;
+      }
+
+      const resolved = handled
+        ? null
+        : (() => {
+          try {
+            return new URL(href, state.currentPreviewUrl || window.location.href);
+          } catch (_error) {
+            return null;
+          }
+        })();
+
+      // Always allow full navigation for page-based routes.
+
+      if (!handled && resolved && doc) {
+        const slug = resolved.pathname.split("/").filter(Boolean).pop() || "";
+        if (slug && !slug.includes(".")) {
+          const anchorTarget = doc.getElementById(slug) || doc.querySelector(`[name="${slug}"]`);
+          if (anchorTarget) {
+            anchorTarget.scrollIntoView({ behavior: "smooth", block: "start" });
+            if (previewFrame.contentWindow) {
+              previewFrame.contentWindow.location.hash = `#${slug}`;
+            }
+            state.currentPreviewUrl = resolved.toString();
+            handled = true;
+          }
+        }
+      }
+
+      if (!handled && resolved) {
+        const current = (() => {
+          try {
+            return new URL(state.currentPreviewUrl || window.location.href);
+          } catch (_error) {
+            return null;
+          }
+        })();
+        if (current) {
+          const resolvedBase = `${resolved.origin}${resolved.pathname}${resolved.search}`;
+          const currentBase = `${current.origin}${current.pathname}${current.search}`;
+          if (resolvedBase === currentBase) {
+            if (previewFrame.contentWindow && resolved.hash) {
+              previewFrame.contentWindow.location.hash = resolved.hash;
+            }
+            state.currentPreviewUrl = resolved.toString();
+            handled = true;
+          }
+        }
+      }
+
+      if (!handled && resolved) {
+        handled = onNavigate(href) !== false;
+      }
+
+      if (handled) {
+        event.preventDefault();
+      }
+    },
+    true
+  );
+
   doc.addEventListener("input", (event) => {
     const target = event.target;
     if (!target.isContentEditable) {
@@ -261,6 +477,15 @@ export const loadSitePreview = async ({
       return siteUrl;
     }
   })();
+  state.currentPreviewUrl = previewUrl;
+  const requestedHash = (() => {
+    try {
+      return new URL(previewUrl).hash;
+    } catch (_error) {
+      const hashIndex = previewUrl.indexOf("#");
+      return hashIndex >= 0 ? previewUrl.slice(hashIndex) : "";
+    }
+  })();
   setStatus("Loading site preview...");
   try {
     const sameOrigin = new URL(previewUrl).origin === window.location.origin;
@@ -268,12 +493,37 @@ export const loadSitePreview = async ({
       previewFrame.src = previewUrl;
       previewFrame.onload = () => {
         decorateEditorLinks(previewFrame.contentDocument, previewUrl);
-        enableEditing(state, previewFrame, registerChange);
+        enableEditing(state, previewFrame, registerChange, (href) => {
+          let nextUrl = "";
+          try {
+            nextUrl = new URL(href, previewUrl).toString();
+          } catch (_error) {
+            return false;
+          }
+          if (siteInput) {
+            siteInput.value = nextUrl;
+          }
+          loadSitePreview({ state, previewFrame, siteInput, setStatus, registerChange });
+          return true;
+        });
+        const pageKey = getPageParam(previewUrl);
+        if (pageKey) {
+          scrollToPageTarget(previewFrame.contentDocument, pageKey);
+        }
       };
       setStatus("Preview loaded. Click text to edit.", "is-good");
       return;
     }
-    const response = await fetch(previewUrl, { cache: "no-store" });
+    const fetchUrl = (() => {
+      try {
+        const url = new URL(previewUrl);
+        url.hash = "";
+        return url.toString();
+      } catch (_error) {
+        return previewUrl.split("#")[0];
+      }
+    })();
+    const response = await fetch(fetchUrl, { cache: "no-store" });
     if (!response.ok) {
       throw new Error(`Site fetch failed: ${response.status}`);
     }
@@ -281,10 +531,30 @@ export const loadSitePreview = async ({
     previewFrame.srcdoc = preparePreviewHtml(html, previewUrl);
     previewFrame.onload = () => {
       decorateEditorLinks(previewFrame.contentDocument, previewUrl);
-      enableEditing(state, previewFrame, registerChange);
+      enableEditing(state, previewFrame, registerChange, (href) => {
+        let nextUrl = "";
+        try {
+          nextUrl = new URL(href, previewUrl).toString();
+        } catch (_error) {
+          return false;
+        }
+        if (siteInput) {
+          siteInput.value = nextUrl;
+        }
+        loadSitePreview({ state, previewFrame, siteInput, setStatus, registerChange });
+        return true;
+      });
+      const pageKey = getPageParam(previewUrl);
+      if (pageKey) {
+        scrollToPageTarget(previewFrame.contentDocument, pageKey);
+      }
+      if (requestedHash && previewFrame.contentWindow) {
+        previewFrame.contentWindow.location.hash = requestedHash;
+      }
     };
     setStatus("Preview loaded (limited access).", "is-good");
   } catch (error) {
-    setStatus("Preview blocked. Host this editor on the same GitHub Pages domain.", "is-bad");
+    setStatus("Preview blocked. Showing live page without editing.", "is-bad");
+    previewFrame.src = previewUrl;
   }
 };
